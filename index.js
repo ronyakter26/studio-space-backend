@@ -91,15 +91,32 @@ app.get("/", (req, res) => {
 // Get All Studios - Public API
 app.get("/api/studios", async (req, res) => {
   try {
-    const studios = await studiosCollection
-      .find({})
-      .toArray();
+    const studios = await studiosCollection.find({}).toArray();
 
     res.send(studios);
   } catch (error) {
     console.error(error);
     res.status(500).send({
       message: "Failed to fetch studios",
+    });
+  }
+});
+
+// Get My Studios - Protected API
+app.get("/api/my-studios", verifyToken, async (req, res) => {
+  try {
+    const myStudios = await studiosCollection
+      .find({
+        ownerId: req.user.id,
+      })
+      .toArray();
+
+    res.send(myStudios);
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).send({
+      message: "Failed to fetch your studios",
     });
   }
 });

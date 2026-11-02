@@ -52,6 +52,62 @@ app.get("/api/studios", async (req, res) => {
   }
 });
 
+// Add New Studio
+app.post("/api/studios", async (req, res) => {
+  try {
+    const {
+      name,
+      category,
+      location,
+      description,
+      price,
+      image,
+    } = req.body;
+
+    if (
+      !name ||
+      !category ||
+      !location ||
+      !description ||
+      price === undefined ||
+      !image
+    ) {
+      return res.status(400).send({
+        message: "Please provide all required studio information.",
+      });
+    }
+
+    const newStudio = {
+      name,
+      category,
+      location,
+      description,
+      price: Number(price),
+      image,
+      rating: 0,
+      createdAt: new Date(),
+    };
+
+    if (!Number.isFinite(newStudio.price) || newStudio.price <= 0) {
+      return res.status(400).send({
+        message: "Please provide a valid price.",
+      });
+    }
+
+    const result = await studiosCollection.insertOne(newStudio);
+
+    res.status(201).send({
+      message: "Studio added successfully!",
+      insertedId: result.insertedId,
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({
+      message: "Failed to add studio.",
+    });
+  }
+});
+
 // Start Server
 async function startServer() {
   await connectToMongoDB();

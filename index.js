@@ -2,15 +2,28 @@
 import express from "express";
 import cors from "cors";
 import { MongoClient } from "mongodb";
+import { createRemoteJWKSet, jwtVerify } from "jose";
 import "dotenv/config";
 
 const PORT = 5000;
 const app = express();
 
-app.use(cors({
-  origin: "http://localhost:3000",
-  credentials: true,
-}));
+const AUTH_URL = process.env.BETTER_AUTH_URL;
+
+if (!AUTH_URL) {
+  throw new Error("BETTER_AUTH_URL is missing in .env");
+}
+
+const JWKS = createRemoteJWKSet(
+  new URL("/api/auth/jwks", AUTH_URL)
+);
+
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 
@@ -32,28 +45,67 @@ async function connectToMongoDB() {
   }
 }
 
+// JWT Verification Middleware
+async function verifyToken(req, res, next) {
+  try {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return res.status(401).send({
+        message: "Unauthorized! Please login first.",
+      });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    const { payload } = await jwtVerify(token, JWKS, {
+      issuer: AUTH_URL,
+      audience: AUTH_URL,
+    });
+
+    if (!payload.sub) {
+      return res.status(401).send({
+        message: "Invalid token!",
+      });
+    }
+
+    req.user = {
+      id: payload.sub,
+    };
+
+    next();
+  } catch (error) {
+    console.error("Token verification failed:", error);
+
+    return res.status(401).send({
+      message: "Invalid or expired token!",
+    });
+  }
+}
+
 // Home Route
 app.get("/", (req, res) => {
   res.send("StudioSpace Server is Running!");
 });
 
-// Get All Studios
+// Get All Studios - Public API
 app.get("/api/studios", async (req, res) => {
   try {
     const studios = await studiosCollection
       .find({})
-      .limit(6)
       .toArray();
 
     res.send(studios);
   } catch (error) {
     console.error(error);
-    res.status(500).send({ message: "Failed to fetch studios" });
+    res.status(500).send({
+      message: "Failed to fetch studios",
+    });
   }
 });
 
-// Add New Studio
-app.post("/api/studios", async (req, res) => {
+// Add New Studio - Protected API
+app.post("/api/studios", verifyToken, async (req, res) => {
   try {
     const {
       name,
@@ -85,10 +137,14 @@ app.post("/api/studios", async (req, res) => {
       price: Number(price),
       image,
       rating: 0,
+      ownerId: req.user.id,
       createdAt: new Date(),
     };
 
-    if (!Number.isFinite(newStudio.price) || newStudio.price <= 0) {
+    if (
+      !Number.isFinite(newStudio.price) ||
+      newStudio.price <= 0
+    ) {
       return res.status(400).send({
         message: "Please provide a valid price.",
       });
@@ -102,6 +158,7 @@ app.post("/api/studios", async (req, res) => {
     });
   } catch (error) {
     console.error(error);
+
     res.status(500).send({
       message: "Failed to add studio.",
     });

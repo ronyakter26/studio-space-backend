@@ -14,6 +14,10 @@ if (!AUTH_URL) {
   throw new Error("BETTER_AUTH_URL is missing in .env");
 }
 
+if (!process.env.MONGO_URI) {
+  throw new Error("MONGO_URI is missing in .env");
+}
+
 const JWKS = createRemoteJWKSet(
   new URL("/api/auth/jwks", AUTH_URL)
 );
@@ -31,6 +35,7 @@ const client = new MongoClient(process.env.MONGO_URI);
 
 let studiosCollection;
 
+// MongoDB Connection
 async function connectToMongoDB() {
   try {
     await client.connect();
@@ -92,10 +97,10 @@ app.get("/", (req, res) => {
 app.get("/api/studios", async (req, res) => {
   try {
     const studios = await studiosCollection.find({}).toArray();
-
     res.send(studios);
   } catch (error) {
     console.error(error);
+
     res.status(500).send({
       message: "Failed to fetch studios",
     });
@@ -259,39 +264,56 @@ app.put("/api/studios/:id", verifyToken, async (req, res) => {
   }
 });
 
+// Delete Request Debug Middleware
+function logDeleteRequest(req, res, next) {
+  console.log("DELETE REQUEST RECEIVED!");
+  console.log("Request URL:", req.originalUrl);
+  console.log("Studio ID:", req.params.id);
+  next();
+}
+
 // Delete Studio - Protected API
-app.delete("/api/studios/:id", verifyToken, async (req, res) => {
-  try {
-    const { id } = req.params;
+app.delete(
+  "/api/studios/:id",
+  logDeleteRequest,
+  verifyToken,
+  async (req, res) => {
+    try {
+      console.log("Logged in User ID:", req.user.id);
 
-    if (!ObjectId.isValid(id)) {
-      return res.status(400).send({
-        message: "Invalid studio ID.",
+      const { id } = req.params;
+
+      if (!ObjectId.isValid(id)) {
+        return res.status(400).send({
+          message: "Invalid studio ID.",
+        });
+      }
+
+      const result = await studiosCollection.deleteOne({
+        _id: new ObjectId(id),
+        ownerId: req.user.id,
+      });
+
+      console.log("Deleted Count:", result.deletedCount);
+
+      if (result.deletedCount === 0) {
+        return res.status(404).send({
+          message: "Studio not found or you are not the owner.",
+        });
+      }
+
+      res.send({
+        message: "Studio deleted successfully!",
+      });
+    } catch (error) {
+      console.error("Delete failed:", error);
+
+      res.status(500).send({
+        message: "Failed to delete studio.",
       });
     }
-
-    const result = await studiosCollection.deleteOne({
-      _id: new ObjectId(id),
-      ownerId: req.user.id,
-    });
-
-    if (result.deletedCount === 0) {
-      return res.status(404).send({
-        message: "Studio not found or you are not the owner.",
-      });
-    }
-
-    res.send({
-      message: "Studio deleted successfully!",
-    });
-  } catch (error) {
-    console.error(error);
-
-    res.status(500).send({
-      message: "Failed to delete studio.",
-    });
   }
-});
+);
 
 // Start Server
 async function startServer() {

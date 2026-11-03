@@ -1,7 +1,7 @@
 
 import express from "express";
 import cors from "cors";
-import { MongoClient } from "mongodb";
+import { MongoClient, ObjectId } from "mongodb";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import "dotenv/config";
 
@@ -178,6 +178,117 @@ app.post("/api/studios", verifyToken, async (req, res) => {
 
     res.status(500).send({
       message: "Failed to add studio.",
+    });
+  }
+});
+
+// Update Studio - Protected API
+app.put("/api/studios/:id", verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        message: "Invalid studio ID.",
+      });
+    }
+
+    const {
+      name,
+      category,
+      location,
+      description,
+      price,
+      image,
+    } = req.body;
+
+    if (
+      !name?.trim() ||
+      !category?.trim() ||
+      !location?.trim() ||
+      !description?.trim() ||
+      price === undefined ||
+      !image?.trim()
+    ) {
+      return res.status(400).send({
+        message: "Please provide all required studio information.",
+      });
+    }
+
+    const updatedPrice = Number(price);
+
+    if (!Number.isFinite(updatedPrice) || updatedPrice <= 0) {
+      return res.status(400).send({
+        message: "Please provide a valid price.",
+      });
+    }
+
+    const result = await studiosCollection.updateOne(
+      {
+        _id: new ObjectId(id),
+        ownerId: req.user.id,
+      },
+      {
+        $set: {
+          name: name.trim(),
+          category: category.trim(),
+          location: location.trim(),
+          description: description.trim(),
+          price: updatedPrice,
+          image: image.trim(),
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).send({
+        message: "Studio not found or you are not the owner.",
+      });
+    }
+
+    res.send({
+      message: "Studio updated successfully!",
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).send({
+      message: "Failed to update studio.",
+    });
+  }
+});
+
+// Delete Studio - Protected API
+app.delete("/api/studios/:id", verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        message: "Invalid studio ID.",
+      });
+    }
+
+    const result = await studiosCollection.deleteOne({
+      _id: new ObjectId(id),
+      ownerId: req.user.id,
+    });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).send({
+        message: "Studio not found or you are not the owner.",
+      });
+    }
+
+    res.send({
+      message: "Studio deleted successfully!",
+    });
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).send({
+      message: "Failed to delete studio.",
     });
   }
 });

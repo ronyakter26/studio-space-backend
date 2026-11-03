@@ -34,6 +34,7 @@ app.use(express.json());
 const client = new MongoClient(process.env.MONGO_URI);
 
 let studiosCollection;
+let bookingsCollection;
 
 // MongoDB Connection
 async function connectToMongoDB() {
@@ -41,7 +42,9 @@ async function connectToMongoDB() {
     await client.connect();
 
     const database = client.db("studioSpace");
+
     studiosCollection = database.collection("studios");
+    bookingsCollection = database.collection("bookings");
 
     console.log("Successfully connected to MongoDB!");
   } catch (error) {
